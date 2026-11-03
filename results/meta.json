@@ -1,0 +1,7 @@
+{
+    "source_image": "my_photo.png",
+    "algorithm": "AES-CBC",
+    "iv": "c3302f5c0230cb34326e20912cf29763",
+    "npcr_aes_ecb": 99.61,
+    "uaci_aes_ecb": 33.51
+}
