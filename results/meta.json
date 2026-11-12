@@ -1,7 +1,26 @@
 {
-    "source_image": "my_photo.png",
-    "algorithm": "AES-CBC",
-    "iv": "c3302f5c0230cb34326e20912cf29763",
-    "npcr_aes_ecb": 99.61,
-    "uaci_aes_ecb": 33.51
+    "my_photo.png": {
+        "source_image": "my_photo.png",
+        "algorithm": "AES-CBC",
+        "iv": "321acead726a010cb526f4b6c0b312cd",
+        "npcr_method": "AES-ECB",
+        "npcr": 99.61,
+        "uaci": 33.51
+    },
+    "gradient.png": {
+        "source_image": "gradient.png",
+        "algorithm": "AES-CBC",
+        "iv": "4892a1333a28109da8dd3f3874aabff0",
+        "npcr_method": "AES-ECB",
+        "npcr": 99.61,
+        "uaci": 33.46
+    },
+    "checkerboard.png": {
+        "source_image": "checkerboard.png",
+        "algorithm": "AES-CBC",
+        "iv": "60311304f493744a8d679537af2f44dc",
+        "npcr_method": "AES-ECB",
+        "npcr": 98.96,
+        "uaci": 31.79
+    }
 }

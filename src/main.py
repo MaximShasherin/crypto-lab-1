@@ -64,8 +64,9 @@ def calc_correlation(img_array, direction='h'):
     else:
         x = arr[:-1, :].flatten()
         y = arr[1:, :].flatten()
-    sample = min(5000, len(x))
-    return pearsonr(x[:sample], y[:sample])[0]
+
+    indices = np.random.choice(len(x), size=min(10000, len(x)), replace=False)
+    return pearsonr(x[indices], y[indices])[0]
 
 
 def npcr_uaci(c1, c2):
@@ -86,107 +87,127 @@ if __name__ == "__main__":
     os.makedirs(imgs_dir, exist_ok=True)
     os.makedirs(results_dir, exist_ok=True)
 
-    img_path = os.path.join(imgs_dir, "my_photo.png")
+    np.random.seed(42)
 
-    if not os.path.exists(img_path):
-        print(f"Ошибка: Положи картинку {img_path}")
-        exit()
-
-    img = Image.open(img_path).convert('RGB')
-    if img.size[0] > 512 or img.size[1] > 512:
-        img = img.resize((512, 512))
-
-    img_bytes = img.tobytes()
-    img_np = np.array(img)
+    images = ["my_photo.png", "gradient.png", "checkerboard.png"]
 
     key = "secretkey123"
     aes_key = hashlib.sha256(key.encode()).digest()[:16]
 
-    print("Шифрование...")
-
-    xor_ct = xor_crypt(img_bytes, key)
-    xor_pt = xor_crypt(xor_ct, key)
-    assert xor_pt == img_bytes
-
-    ecb_ct = aes_ecb_encrypt(img_bytes, aes_key)
-    ecb_pt = aes_ecb_decrypt(ecb_ct, aes_key)
-    assert ecb_pt == img_bytes
-
-    cbc_ct = aes_cbc_encrypt(img_bytes, aes_key)
-    cbc_pt = aes_cbc_decrypt(cbc_ct, aes_key)
-    assert cbc_pt == img_bytes
-
-    print("Все тесты на обратимость пройдены!")
-
-    Image.frombytes('RGB', img.size, xor_ct).save(os.path.join(imgs_dir, "xor_cipher.png"))
-    Image.frombytes('RGB', img.size, xor_pt).save(os.path.join(imgs_dir, "xor_decrypted.png"))
-
-    with open(os.path.join(imgs_dir, "ecb_cipher.bin"), "wb") as f:
-        f.write(ecb_ct)
-    Image.frombytes('RGB', img.size, ecb_pt).save(os.path.join(imgs_dir, "ecb_decrypted.png"))
-
-    with open(os.path.join(imgs_dir, "cbc_cipher.bin"), "wb") as f:
-        f.write(cbc_ct)
-    Image.frombytes('RGB', img.size, cbc_pt).save(os.path.join(imgs_dir, "cbc_decrypted.png"))
-
-    print("\nСчитаем метрики...")
-    n = img_np.size
-
-    methods = {
-        "Original": img_bytes,
-        "XOR": xor_ct[:n],
-        "AES-ECB": ecb_ct[:n],
-        "AES-CBC": cbc_ct[:n]
-    }
-
-    metrics_list = []
-    print(f"{'Метод':<15} | {'Энтропия':<10} | {'Corr H':<10} | {'Corr V':<10}")
-    print("-" * 55)
-
-    for name, data in methods.items():
-        ent = calc_entropy(data)
-        arr = np.frombuffer(data, dtype=np.uint8)[:n].reshape(img_np.shape)
-        corr_h = calc_correlation(arr, 'h')
-        corr_v = calc_correlation(arr, 'v')
-        print(f"{name:<15} | {ent:<10.4f} | {corr_h:<10.4f} | {corr_v:<10.4f}")
-
-        metrics_list.append({
-            "method": name,
-            "entropy": round(ent, 4),
-            "corr_h": round(corr_h, 4),
-            "corr_v": round(corr_v, 4)
-        })
-
+    aes_key2_arr = bytearray(aes_key)
     key2 = "secretkey124"
     aes_key2 = hashlib.sha256(key2.encode()).digest()[:16]
-    ecb_ct2 = aes_ecb_encrypt(img_bytes, aes_key2)
-    npcr, uaci = npcr_uaci(ecb_ct, ecb_ct2)
-    print(f"\nNPCR (AES-ECB): {npcr:.2f}%")
-    print(f"UACI (AES-ECB): {uaci:.2f}%")
 
-    with open(os.path.join(results_dir, "metrics.csv"), "w", newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=["method", "entropy", "corr_h", "corr_v"])
+    all_metrics = []
+    npcr_rows = []
+    meta_all = {}
+
+    for img_name in images:
+        img_path = os.path.join(imgs_dir, img_name)
+        if not os.path.exists(img_path):
+            print(f"Пропуск: {img_path} не найден")
+            continue
+
+        print(f"\n=== Обработка {img_name} ===")
+
+        img = Image.open(img_path).convert('RGB')
+        if img.size[0] > 512 or img.size[1] > 512:
+            img = img.resize((512, 512))
+
+        img_bytes = img.tobytes()
+        img_np = np.array(img)
+        n = img_np.size
+
+        xor_ct = xor_crypt(img_bytes, key)
+        assert xor_crypt(xor_ct, key) == img_bytes
+
+        ecb_ct = aes_ecb_encrypt(img_bytes, aes_key)
+        assert aes_ecb_decrypt(ecb_ct, aes_key) == img_bytes
+
+        cbc_ct = aes_cbc_encrypt(img_bytes, aes_key)
+        assert aes_cbc_decrypt(cbc_ct, aes_key) == img_bytes
+
+        print("  Тесты на обратимость пройдены.")
+
+        stem = os.path.splitext(img_name)[0]
+
+        # Сохраняем результаты шифрования этого изображения
+        Image.frombytes('RGB', img.size, xor_ct).save(
+            os.path.join(imgs_dir, f"{stem}_xor_cipher.png"))
+        with open(os.path.join(imgs_dir, f"{stem}_ecb_cipher.bin"), "wb") as f:
+            f.write(ecb_ct)
+        with open(os.path.join(imgs_dir, f"{stem}_cbc_cipher.bin"), "wb") as f:
+            f.write(cbc_ct)
+
+        methods = {
+            "Original": img_bytes,
+            "XOR": xor_ct[:n],
+            "AES-ECB": ecb_ct[:n],
+            "AES-CBC": cbc_ct[16:16 + n],
+        }
+
+        for name, data in methods.items():
+            ent = calc_entropy(data)
+            arr = np.frombuffer(data, dtype=np.uint8)[:n].reshape(img_np.shape)
+            corr_h = calc_correlation(arr, 'h')
+            corr_v = calc_correlation(arr, 'v')
+            print(f"  {name:<12} ent={ent:.4f} corr_h={corr_h:.4f} corr_v={corr_v:.4f}")
+            all_metrics.append({
+                "image": img_name,
+                "method": name,
+                "entropy": round(ent, 4),
+                "corr_h": round(corr_h, 4),
+                "corr_v": round(corr_v, 4),
+            })
+
+        ecb_ct2 = aes_ecb_encrypt(img_bytes, aes_key2)
+        npcr, uaci = npcr_uaci(ecb_ct, ecb_ct2)
+        print(f"  NPCR={npcr:.2f}%  UACI={uaci:.2f}%")
+        npcr_rows.append({
+            "image": img_name,
+            "npcr": round(npcr, 2),
+            "uaci": round(uaci, 2),
+        })
+
+        meta_all[img_name] = {
+            "source_image": img_name,
+            "algorithm": "AES-CBC",
+            "iv": cbc_ct[:16].hex(),
+            "npcr_method": "AES-ECB",
+            "npcr": round(npcr, 2),
+            "uaci": round(uaci, 2),
+        }
+
+        # гистограмма по этому изображению
+        plt.figure(figsize=(12, 8))
+        for i, (name, data) in enumerate(methods.items()):
+            plt.subplot(2, 2, i + 1)
+            sample_data = np.random.choice(
+                list(data), size=min(50000, len(data)), replace=False)
+            plt.hist(sample_data, bins=256, color='black', alpha=0.7)
+            plt.title(f"{stem}: {name}")
+            plt.xlabel("Значение байта")
+            plt.ylabel("Частота")
+        plt.tight_layout()
+        plt.savefig(os.path.join(results_dir, f"histograms_{stem}.png"))
+        plt.close()
+
+    # Сохраняем сводные результаты
+    with open(os.path.join(results_dir, "metrics.csv"), "w",
+              newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["image", "method", "entropy", "corr_h", "corr_v"])
         writer.writeheader()
-        writer.writerows(metrics_list)
+        writer.writerows(all_metrics)
 
-    meta_data = {
-        "source_image": "my_photo.png",
-        "algorithm": "AES-CBC",
-        "iv": cbc_ct[:16].hex(),
-        "npcr_aes_ecb": round(npcr, 2),
-        "uaci_aes_ecb": round(uaci, 2)
-    }
-    with open(os.path.join(results_dir, "meta.json"), "w", encoding='utf-8') as f:
-        json.dump(meta_data, f, indent=4)
+    with open(os.path.join(results_dir, "npcr_uaci.csv"), "w",
+              newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=["image", "npcr", "uaci"])
+        writer.writeheader()
+        writer.writerows(npcr_rows)
 
-    plt.figure(figsize=(12, 8))
-    for i, (name, data) in enumerate(methods.items()):
-        plt.subplot(2, 2, i + 1)
-        sample_data = np.random.choice(list(data), size=min(50000, len(data)), replace=False)
-        plt.hist(sample_data, bins=256, color='black', alpha=0.7)
-        plt.title(f"Гистограмма: {name}")
-        plt.xlabel("Значение байта")
-        plt.ylabel("Частота")
-    plt.tight_layout()
-    plt.savefig(os.path.join(results_dir, "histograms.png"))
-    print("\nФайлы сохранены!")
+    with open(os.path.join(results_dir, "meta.json"), "w",
+              encoding='utf-8') as f:
+        json.dump(meta_all, f, indent=4)
+
+    print("\nВсё сохранено в results/")
